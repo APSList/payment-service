@@ -1,0 +1,44 @@
+on:
+  push:
+    branches:
+      - actions-test
+    paths:
+      - "services/payment-service/**"
+      - ".github/workflows/payment-service.yaml"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Login to DockerHub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build
+        run: |
+          cd services/payment-service
+          docker build -t ${{ secrets.DOCKERHUB_USERNAME }}/payment-service:latest .
+
+      - name: Push Docker image to Docker Hub
+        run: |
+          docker push ${{ secrets.DOCKERHUB_USERNAME }}/payment-service:latest
+
+      - name: Setup kubeconfig
+        run: |
+          mkdir -p $HOME/.kube
+          echo "${{ secrets.KUBE_CONFIG }}" | base64 --decode > $HOME/.kube/config
+
+      - name: Deploy with Helm
+        run: |
+          helm upgrade --install hostflow ./helm/charts/payment-service \
+            --namespace default \
+            --set image.repository=${{ secrets.DOCKERHUB_USERNAME }}/payment-service \
+            --set image.tag=latest \
+            --set image.pullPolicy=Always \
+            --set actualSecrets.STRIPE_API_KEY="${{ secrets.STRIPE_KEY }}" \
+            --set actualSecrets.DATABASE_URL="${{ secrets.DB_URL }}" \

@@ -22,4 +22,10 @@
     <Folder Include="Tests\" />
   </ItemGroup>
 
+  <ItemGroup>
+    <None Include=".github\workflows\release-please.yaml" />
+    <None Include=".github\workflows\prod.yaml" />
+    <None Include=".github\workflows\dev.yaml" />
+  </ItemGroup>
+
 </Project>
