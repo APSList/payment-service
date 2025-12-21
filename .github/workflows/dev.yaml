@@ -1,0 +1,89 @@
+name: Dev CI/CD
+
+on:
+  push:
+    branches:
+      - dev
+
+env:
+  IMAGE_NAME: payment-service
+  IMAGE_REPO: ${{ secrets.DOCKERHUB_USERNAME }}/payment-service
+  IMAGE_TAG: ${{ github.sha }}
+
+jobs:
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    environment: dev
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET 10 (preview)
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+          dotnet-quality: preview
+
+      - name: Restore
+        run: |
+          cd services/payment-service
+          dotnet restore
+
+      - name: Build
+        run: |
+          cd services/payment-service
+          dotnet build --no-restore
+
+      - name: Test
+        run: |
+          cd services/payment-service
+          dotnet test --no-build --verbosity normal
+
+  build:
+    name: Build Docker Image
+    needs: test
+    runs-on: ubuntu-latest
+    environment: dev
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Login to DockerHub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build Docker image
+        run: |
+          cd services/payment-service
+          docker build -t $IMAGE_REPO:$IMAGE_TAG .
+
+      - name: Push Docker image
+        run: |
+          docker push $IMAGE_REPO:$IMAGE_TAG
+
+  deploy:
+    name: Deploy to DEV
+    needs: build
+    runs-on: ubuntu-latest
+    environment: dev
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup kubeconfig
+        run: |
+          mkdir -p $HOME/.kube
+          echo "${{ secrets.KUBE_CONFIG }}" | base64 --decode > $HOME/.kube/config
+
+      - name: Deploy with Helm
+        run: |
+          helm upgrade --install hostflow ./helm/charts/payment-service \
+            --namespace default \
+            --set image.repository=$IMAGE_REPO \
+            --set image.tag=$IMAGE_TAG \
+            --set image.pullPolicy=IfNotPresent \
+            --set actualSecrets.STRIPE_API_KEY="${{ secrets.STRIPE_KEY }}" \
+            --set actualSecrets.DATABASE_URL="${{ secrets.DB_URL_PAYMENT }}"
