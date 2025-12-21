@@ -1,15 +1,51 @@
+name: Dev CI/CD
+
 on:
   push:
     branches:
       - dev
-    paths:
-      - "services/payment-service/**"
-      - ".github/workflows/payment-service.yaml"
+
+env:
+  IMAGE_NAME: payment-service
+  IMAGE_REPO: ${{ secrets.DOCKERHUB_USERNAME }}/payment-service
+  IMAGE_TAG: ${{ github.sha }}
 
 jobs:
-  build:
-    name: Build
+  test:
+    name: Test
     runs-on: ubuntu-latest
+    environment: dev
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET 10 (preview)
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+          dotnet-quality: preview
+
+      - name: Restore
+        run: |
+          cd services/payment-service
+          dotnet restore
+
+      - name: Build
+        run: |
+          cd services/payment-service
+          dotnet build --no-restore
+
+      - name: Test
+        run: |
+          cd services/payment-service
+          dotnet test --no-build --verbosity normal
+
+  build:
+    name: Build Docker Image
+    needs: test
+    runs-on: ubuntu-latest
+    environment: dev
+
     steps:
       - uses: actions/checkout@v4
 
@@ -22,43 +58,18 @@ jobs:
       - name: Build Docker image
         run: |
           cd services/payment-service
-          docker build -t ${{ secrets.DOCKERHUB_USERNAME }}/payment-service:latest .
+          docker build -t $IMAGE_REPO:$IMAGE_TAG .
 
       - name: Push Docker image
         run: |
-          docker push ${{ secrets.DOCKERHUB_USERNAME }}/payment-service:latest
-  test:
-    needs: build
-    name: Test
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup .NET 10 (preview)
-        uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: '10.0.x'
-          dotnet-quality: preview
-
-      - name: Restore dependencies
-        run: |
-          cd services/payment-service
-          dotnet restore
-
-      - name: Build
-        run: |
-          cd services/payment-service
-          dotnet build --no-restore
-
-      - name: Run tests
-        run: |
-          cd services/payment-service
-          dotnet test --no-build --verbosity normal
+          docker push $IMAGE_REPO:$IMAGE_TAG
 
   deploy:
-    runs-on: ubuntu-latest
+    name: Deploy to DEV
     needs: build
+    runs-on: ubuntu-latest
+    environment: dev
+
     steps:
       - uses: actions/checkout@v4
 
@@ -71,8 +82,8 @@ jobs:
         run: |
           helm upgrade --install hostflow ./helm/charts/payment-service \
             --namespace default \
-            --set image.repository=${{ secrets.DOCKERHUB_USERNAME }}/payment-service \
-            --set image.tag=latest \
-            --set image.pullPolicy=Always \
+            --set image.repository=$IMAGE_REPO \
+            --set image.tag=$IMAGE_TAG \
+            --set image.pullPolicy=IfNotPresent \
             --set actualSecrets.STRIPE_API_KEY="${{ secrets.STRIPE_KEY }}" \
-            --set actualSecrets.DATABASE_URL="${{ secrets.DB_URL_PAYMENT }}" \
+            --set actualSecrets.DATABASE_URL="${{ secrets.DB_URL_PAYMENT }}"
