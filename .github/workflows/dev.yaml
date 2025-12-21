@@ -50,7 +50,6 @@ jobs:
 
       - name: Build Docker image
         run: |
-          cd services/payment-service
           docker build -t $IMAGE_REPO:$IMAGE_TAG .
 
       - name: Push Docker image
