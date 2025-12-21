@@ -67,7 +67,6 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: APSList/Hostflow
-          path: helm
           token: ${{ secrets.GH_TOKEN }}
           ref: dev
 
