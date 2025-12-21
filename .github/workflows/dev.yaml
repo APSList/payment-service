@@ -6,7 +6,6 @@ on:
       - dev
 
 env:
-  IMAGE_NAME: payment-service
   IMAGE_REPO: ${{ secrets.DOCKERHUB_USERNAME }}/payment-service
   IMAGE_TAG: ${{ github.sha }}
 
@@ -26,19 +25,13 @@ jobs:
           dotnet-quality: preview
 
       - name: Restore
-        run: |
-          cd services/payment-service
-          dotnet restore
+        run: dotnet restore
 
       - name: Build
-        run: |
-          cd services/payment-service
-          dotnet build --no-restore
+        run: dotnet build --no-restore
 
       - name: Test
-        run: |
-          cd services/payment-service
-          dotnet test --no-build --verbosity normal
+        run: dotnet test --no-build --verbosity normal
 
   build:
     name: Build Docker Image
@@ -71,17 +64,24 @@ jobs:
     environment: dev
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout Helm Charts
+        uses: actions/checkout@v4
+        with:
+          repository: APSList/Hostflow
+          path: helm
+          token: ${{ secrets.GH_TOKEN }}
+          ref: dev
 
       - name: Setup kubeconfig
         run: |
           mkdir -p $HOME/.kube
-          echo "${{ secrets.KUBE_CONFIG }}" | base64 --decode > $HOME/.kube/config
+          echo "${{ secrets.KUBE_CONFIG_DEV }}" | base64 --decode > $HOME/.kube/config
 
       - name: Deploy with Helm
         run: |
-          helm upgrade --install hostflow ./helm/charts/payment-service \
-            --namespace default \
+          helm upgrade --install payment-service-dev ./helm/charts/payment-service \
+            --namespace dev \
+            --create-namespace \
             --set image.repository=$IMAGE_REPO \
             --set image.tag=$IMAGE_TAG \
             --set image.pullPolicy=IfNotPresent \
