@@ -4,11 +4,16 @@ on:
   release:
     types: [published]
 
+env:
+  IMAGE_REPO: ${{ secrets.DOCKERHUB_USERNAME }}/payment-service
+  IMAGE_TAG: ${{ github.ref_name }}
+
 jobs:
   test:
     name: Test
     runs-on: ubuntu-latest
     environment: prod
+
     steps:
       - uses: actions/checkout@v4
 
@@ -19,25 +24,20 @@ jobs:
           dotnet-quality: preview
 
       - name: Restore dependencies
-        run: |
-          cd services/payment-service
-          dotnet restore
+        run: dotnet restore
 
       - name: Build
-        run: |
-          cd services/payment-service
-          dotnet build --no-restore
+        run: dotnet build --configuration Release --no-restore
 
       - name: Run tests
-        run: |
-          cd services/payment-service
-          dotnet test --no-build --verbosity normal
+        run: dotnet test --configuration Release --no-build --verbosity normal
 
   build:
     name: Build Docker Image
     needs: test
     runs-on: ubuntu-latest
     environment: prod
+
     steps:
       - uses: actions/checkout@v4
 
@@ -47,27 +47,29 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Build & tag Docker image
+      - name: Build Docker image
         run: |
-          cd services/payment-service
-
           docker build \
-            -t ${{ secrets.DOCKERHUB_USERNAME }}/payment-service:${{ github.ref_name }} \
-            -t ${{ secrets.DOCKERHUB_USERNAME }}/payment-service:latest \
+            -t $IMAGE_REPO:$IMAGE_TAG \
             .
 
       - name: Push Docker image
         run: |
-          docker push ${{ secrets.DOCKERHUB_USERNAME }}/payment-service:${{ github.ref_name }}
-          docker push ${{ secrets.DOCKERHUB_USERNAME }}/payment-service:latest
+          docker push $IMAGE_REPO:$IMAGE_TAG
 
   deploy:
-    name: Deploy
+    name: Deploy to Production
     needs: build
     runs-on: ubuntu-latest
     environment: prod
+
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout Helm Charts
+        uses: actions/checkout@v4
+        with:
+          repository: APSList/Hostflow
+          token: ${{ secrets.GH_TOKEN }}
+          ref: main
 
       - name: Setup kubeconfig
         run: |
@@ -76,10 +78,9 @@ jobs:
 
       - name: Deploy with Helm
         run: |
-          helm upgrade --install hostflow ./helm/charts/payment-service \
-            --namespace default \
-            --set image.repository=${{ secrets.DOCKERHUB_USERNAME }}/payment-service \
-            --set image.tag=${{ github.ref_name }} \
-            --set image.pullPolicy=IfNotPresent \
-            --set actualSecrets.STRIPE_API_KEY="${{ secrets.STRIPE_KEY }}" \
-            --set actualSecrets.DATABASE_URL="${{ secrets.DB_URL_PAYMENT }}"
+          helm upgrade --install payment-service-prod ./helm/charts/payment-service \
+            --namespace prod \
+            --create-namespace \
+            -f ./helm/charts/payment-service/values-prod.yaml \
+            --set image.repository=$IMAGE_REPO \
+            --set image.tag=$IMAGE_TAG
