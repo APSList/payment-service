@@ -1,9 +1,14 @@
+using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Npgsql;
 using payment_service.Database;
 using payment_service.Interfaces;
 using payment_service.Options;
 using payment_service.Services;
+using Prometheus;
+using Serilog;
+using Serilog.Formatting.Compact;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -32,19 +37,64 @@ builder.Services.AddScoped<IPaymentConfirmationService, PaymentConfirmationServi
 builder.Services.AddDbContext<PaymentDbContext>(options =>
     options.UseNpgsql(builder.Configuration.GetConnectionString("Supabase")));
 
+//Logging
+builder.Host.UseSerilog((context, config) =>
+{
+    config
+        .MinimumLevel.Information()
+        .Enrich.FromLogContext()
+        .Enrich.WithProperty("Service", "payment-service")
+        .WriteTo.Console()
+        .WriteTo.Http(
+            requestUri: "http://localhost:5044", // lokalni Logstash
+            queueLimitBytes: null,
+            textFormatter: new RenderedCompactJsonFormatter()
+        );
+});
+
+//Health checks
+builder.Services.AddHealthChecks()
+    .AddCheck("self", () => HealthCheckResult.Healthy())
+    .AddNpgSql(
+        builder.Configuration.GetConnectionString("Supabase") ?? "",
+        name: "postgres",
+        failureStatus: HealthStatus.Unhealthy
+    );
 
 var app = builder.Build();
 
 // Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())
 {
-        app.UseSwagger();
-        app.UseSwaggerUI(options =>
-        {
-            options.SwaggerEndpoint("/swagger/v1/swagger.json", "Payment API v1");
-            options.RoutePrefix = string.Empty; // UI na root
-        });
+    app.UseSwagger();
+    app.UseSwaggerUI();
 }
+
+// Health endpoints
+app.MapHealthChecks("/health/live", new HealthCheckOptions
+{
+    Predicate = check => check.Name == "self"
+});
+
+app.MapHealthChecks("/health/ready", new HealthCheckOptions
+{
+    Predicate = _ => true
+});
+
+app.MapGet("/ok", () =>
+{
+    Log.Information("OK endpoint called");
+    return "OK";
+});
+
+app.MapGet("/error", () =>
+{
+    Log.Error("Something went wrong");
+    return Results.Problem("Error");
+});
+
+app.UseHttpMetrics();     // meri HTTP odzivnost, status kode, metode
+app.MapMetrics();         // /metrics endpoint
 
 app.UseHttpsRedirection();
 
