@@ -27,11 +27,21 @@ builder.Services
     .Validate(opt => !string.IsNullOrEmpty(opt.ApiKey), "ApiKey should not be empty")
     .ValidateOnStart();
 
+builder.Services
+    .AddOptions<KafkaOptions>()
+    .Bind(builder.Configuration.GetSection(KafkaOptions.SectionName))
+    .ValidateDataAnnotations()
+    .ValidateOnStart();
+
 //Dependency injeciton
 builder.Services.AddScoped<IPaymentService, PaymentService>();
 builder.Services.AddScoped<IStripeIntegrationService, StripeIntegrationService>();
 builder.Services.AddScoped<IStripeWebhookService, StripeWebhookService>();
 builder.Services.AddScoped<IPaymentConfirmationService, PaymentConfirmationService>();
+
+
+builder.Services.AddSingleton<IKafkaProducer, KafkaProducer>();
+builder.Services.AddHostedService<OutboxPublisherService>();
 
 //Database
 builder.Services.AddDbContext<PaymentDbContext>(options =>
