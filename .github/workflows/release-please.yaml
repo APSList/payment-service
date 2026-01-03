@@ -12,9 +12,7 @@ permissions:
 jobs:
   release-please:
     runs-on: ubuntu-latest
-
     steps:
       - uses: googleapis/release-please-action@v4
         with:
-          release-type: simple
-          release-as: 1.0.0
+          config-file: release-please-config.json
