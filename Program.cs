@@ -27,11 +27,29 @@ builder.Services
     .Validate(opt => !string.IsNullOrEmpty(opt.ApiKey), "ApiKey should not be empty")
     .ValidateOnStart();
 
+builder.Services
+    .AddOptions<KafkaOptions>()
+    .Bind(builder.Configuration.GetSection(KafkaOptions.SectionName))
+    .ValidateDataAnnotations()
+    .ValidateOnStart();
+
 //Dependency injeciton
 builder.Services.AddScoped<IPaymentService, PaymentService>();
 builder.Services.AddScoped<IStripeIntegrationService, StripeIntegrationService>();
 builder.Services.AddScoped<IStripeWebhookService, StripeWebhookService>();
 builder.Services.AddScoped<IPaymentConfirmationService, PaymentConfirmationService>();
+
+
+builder.Services.AddSingleton<IKafkaProducer, KafkaProducer>();
+
+var kafkaOptions = builder.Configuration
+    .GetSection(KafkaOptions.SectionName)
+    .Get<KafkaOptions>();
+
+if (kafkaOptions!.EnableKafka == true)
+{
+    builder.Services.AddHostedService<OutboxPublisherService>();
+}
 
 //Database
 builder.Services.AddDbContext<PaymentDbContext>(options =>
@@ -42,6 +60,14 @@ builder.Host.UseSerilog((context, config) =>
 {
     config
         .MinimumLevel.Information()
+        .MinimumLevel.Override(
+            "Microsoft.EntityFrameworkCore.Database.Command",
+            Serilog.Events.LogEventLevel.Warning)
+
+        // (opcijsko) še bolj na splošno
+        .MinimumLevel.Override(
+            "Microsoft.EntityFrameworkCore",
+            Serilog.Events.LogEventLevel.Warning)
         .Enrich.FromLogContext()
         .Enrich.WithProperty("Service", "payment-service")
         .WriteTo.Console()

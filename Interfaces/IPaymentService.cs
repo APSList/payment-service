@@ -7,7 +7,7 @@ public interface IPaymentService
 {
     Task<List<Payment>> GetPaymentsAsync(PaymentFilter filter);
     Task<Payment?> GetPaymentByIdAsync(int paymentId);
-    Task<PaymentIntent?> InsertPaymentAsync(PaymentCreateRequestDTO dto);
+    Task<string> InsertPaymentAsync(PaymentCreateRequestDTO dto);
     Task<int?> UpdatePaymentAsync(int paymentId, PaymentUpdateRequestDTO dto);
     Task<int?> DeletePaymentByIdAsync(int paymentId);
     Task<bool> ConfirmPaymentAsync(int paymentId);

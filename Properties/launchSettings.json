@@ -5,7 +5,7 @@
       "commandName": "Project",
       "dotnetRunMessages": true,
       "launchBrowser": false,
-      "applicationUrl": "http://localhost:8080",
+      "applicationUrl": "http://localhost:8007",
       "environmentVariables": {
         "ASPNETCORE_ENVIRONMENT": "Development"
       }
@@ -15,9 +15,9 @@
       "commandName": "Docker",
       "dotnetRunMessages": true,
       "launchBrowser": false,
-      "launchUrl": "http://localhost:8080/swagger",
+      "launchUrl": "http://localhost:8007/swagger",
       "environmentVariables": {
-        "ASPNETCORE_URLS": "http://0.0.0.0:8080",
+        "ASPNETCORE_URLS": "http://0.0.0.0:8007",
         "ASPNETCORE_ENVIRONMENT": "Development"
       },
       "publishAllPorts": true

@@ -7,4 +7,8 @@ public class StripeOptions
 
     [Required]
     public string ApiKey { get; set; } = string.Empty;
+
+    [Required]
+    public string WebhookSecret { get; set; } = string.Empty;
+
 }
