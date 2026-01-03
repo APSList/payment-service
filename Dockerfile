@@ -3,10 +3,10 @@
 # =========================
 FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS base
 WORKDIR /app
-EXPOSE 8080
+EXPOSE 8007
 
 # ASP.NET Core default binding
-ENV ASPNETCORE_URLS=http://+:8080
+ENV ASPNETCORE_URLS=http://+:8007
 ENV ASPNETCORE_ENVIRONMENT=Production
 
 # =========================
