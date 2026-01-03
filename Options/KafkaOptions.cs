@@ -11,5 +11,14 @@ public class KafkaOptions
     public string ClientId { get; init; } = "payment-service";
     [Required]
     public string PaymentsTopic { get; init; } = "booking.payments";
+
+    [Required]
+    public bool EnableKafka { get; init; } = true;
+
+    // SASL/SCRAM (za Helm setup)
+    public string? SaslUsername { get; init; }
+    public string? SaslPassword { get; init; }
+    public string? SecurityProtocol { get; init; }   // npr. "SaslPlaintext"
+    public string? SaslMechanism { get; init; }      // npr. "ScramSha256"
 }
 

@@ -30,8 +30,16 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Folder Include="Kafka\" />
     <Folder Include="Tests\" />
     <Folder Include="Tests\" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include=".github\workflows\dev.yaml" />
+    <None Include=".github\workflows\pr.yaml" />
+    <None Include=".github\workflows\release-please.yaml" />
+    <None Include=".github\workflows\release.yaml" />
   </ItemGroup>
 
 </Project>

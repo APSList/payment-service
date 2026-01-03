@@ -41,7 +41,15 @@ builder.Services.AddScoped<IPaymentConfirmationService, PaymentConfirmationServi
 
 
 builder.Services.AddSingleton<IKafkaProducer, KafkaProducer>();
-builder.Services.AddHostedService<OutboxPublisherService>();
+
+var kafkaOptions = builder.Configuration
+    .GetSection(KafkaOptions.SectionName)
+    .Get<KafkaOptions>();
+
+if (kafkaOptions!.EnableKafka == true)
+{
+    builder.Services.AddHostedService<OutboxPublisherService>();
+}
 
 //Database
 builder.Services.AddDbContext<PaymentDbContext>(options =>
@@ -52,6 +60,14 @@ builder.Host.UseSerilog((context, config) =>
 {
     config
         .MinimumLevel.Information()
+        .MinimumLevel.Override(
+            "Microsoft.EntityFrameworkCore.Database.Command",
+            Serilog.Events.LogEventLevel.Warning)
+
+        // (opcijsko) še bolj na splošno
+        .MinimumLevel.Override(
+            "Microsoft.EntityFrameworkCore",
+            Serilog.Events.LogEventLevel.Warning)
         .Enrich.FromLogContext()
         .Enrich.WithProperty("Service", "payment-service")
         .WriteTo.Console()

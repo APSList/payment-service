@@ -8,6 +8,7 @@ using payment_service.Models.Payment;
 using payment_service.Models.Stripe;
 using payment_service.Options;
 using Stripe;
+using Stripe.Checkout;
 
 namespace payment_service.Services;
 
@@ -42,32 +43,34 @@ public class PaymentService : IPaymentService
     }
 
     // POST /payments
-    public async Task<PaymentIntent?> InsertPaymentAsync(PaymentCreateRequestDTO dto)
+    public async Task<string> InsertPaymentAsync(PaymentCreateRequestDTO dto)
     {
-        //TODO VALIDATIONS
+        // 1️⃣ ustvari checkout link
+        var session = await _stripeService.CreateCheckoutSessionAsync(dto);
 
-        var createPaymentDTO = new StripeCreatePaymentDTO()
-        {
-            Amount = dto.Amount!.Value
-        };
-
-        var paymentIntent = await _stripeService.CreatePaymentIntentAsync(createPaymentDTO);
-
-        var paymentToInsert = new Payment()
+        // 2️⃣ shrani payment kot PENDING
+        var payment = new Payment
         {
             OrganizationId = dto.OrganizationId!.Value,
             ReservationId = dto.ReservationId!.Value,
             Amount = dto.Amount!.Value,
-            Status = paymentIntent.Status,
-            PaymentIntentId = paymentIntent.Id,
+            Status = "pending",
             CreatedAt = DateTime.UtcNow,
             CreatedBy = "SYSTEM"
         };
 
-        _context.Payments.Add(paymentToInsert);
+        _context.Payments.Add(payment);
         await _context.SaveChangesAsync();
 
-        return paymentIntent;
+
+        //TODO PREMAKNI POTEM DRUGAME!
+        // 3️⃣ TODO: pošlji link userju (email / sms / push)
+        // await _messageService.SendPaymentLink(checkoutUrl);
+
+        await SendToBooking(payment, null);
+
+
+        return session.Url;
     }
 
     // PUT /payments/{id}
@@ -121,7 +124,7 @@ public class PaymentService : IPaymentService
 
         await _context.SaveChangesAsync();
 
-        SendToBooking(payment, intent);
+        //SendToBooking(payment, intent);
         return true;
     }
 
@@ -143,10 +146,10 @@ public class PaymentService : IPaymentService
         return true;
     }
 
-    private void SendToBooking(Payment payment, PaymentIntent intent)
+    private async Task SendToBooking(Payment payment, PaymentIntent intent = null)
     {
-        if (string.Equals(intent.Status, "succeeded", StringComparison.OrdinalIgnoreCase))
-        {
+        //if (string.Equals(intent.Status, "succeeded", StringComparison.OrdinalIgnoreCase))
+        //{
             var correlationId = payment.ReservationId.ToString(); // ali pa HTTP request correlation id
 
             var evt = new PaymentSucceeded(
@@ -155,7 +158,7 @@ public class PaymentService : IPaymentService
                 ReservationId: payment.ReservationId,
                 Amount: payment.Amount,
                 StripePaymentIntentId: payment.PaymentIntentId,
-                StripeStatus: intent.Status,
+                StripeStatus: "TODO", //intent.Status
                 PaidAtUtc: DateTimeOffset.UtcNow
             );
 
@@ -173,6 +176,7 @@ public class PaymentService : IPaymentService
 
             var outbox = OutboxEnqueuerHelper.Create(_kafkaOptions.PaymentsTopic, key: payment.ReservationId.ToString(), envelope);
             _context.OutboxMessages.Add(outbox);
-        }
+            await _context.SaveChangesAsync();
+        //}
     }
 }

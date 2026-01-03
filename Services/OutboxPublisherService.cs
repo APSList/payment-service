@@ -58,7 +58,7 @@ public class OutboxPublisherService : BackgroundService
             }
 
             // Poll interval (tune for throughput)
-            await Task.Delay(TimeSpan.FromSeconds(2), stoppingToken);
+            await Task.Delay(TimeSpan.FromSeconds(5), stoppingToken);
         }
     }
 }

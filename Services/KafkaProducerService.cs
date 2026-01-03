@@ -29,6 +29,14 @@ public sealed class KafkaProducer : IKafkaProducer, IDisposable
             CompressionType = CompressionType.Snappy
         };
 
+        if (!string.IsNullOrWhiteSpace(o.SaslUsername) && !string.IsNullOrWhiteSpace(o.SaslPassword))
+        {
+            config.SecurityProtocol = Enum.Parse<SecurityProtocol>(o.SecurityProtocol ?? "SaslPlaintext", ignoreCase: true);
+            config.SaslMechanism = Enum.Parse<SaslMechanism>(o.SaslMechanism ?? "ScramSha256", ignoreCase: true);
+            config.SaslUsername = o.SaslUsername;
+            config.SaslPassword = o.SaslPassword;
+        }
+
         _producer = new ProducerBuilder<string, byte[]>(config).Build();
     }
 
@@ -62,21 +70,30 @@ public sealed class KafkaProducer : IKafkaProducer, IDisposable
             throw new KafkaException(new Error(ErrorCode.Local_MsgTimedOut, "Message not persisted."));
     }
 
-    public Task ProduceRawAsync(
-        string topic,
-        string key,
-        byte[] payload,
-        CancellationToken ct = default)
+    public async Task ProduceRawAsync(
+    string topic,
+    string key,
+    byte[] payload,
+    CancellationToken ct = default)
     {
+        ct.ThrowIfCancellationRequested();
+
         var msg = new Message<string, byte[]>
         {
             Key = key,
             Value = payload
         };
 
-        ct.ThrowIfCancellationRequested();
-        return _producer.ProduceAsync(topic, msg);
+        var result = await _producer.ProduceAsync(topic, msg, ct);
+
+        if (result.Status != PersistenceStatus.Persisted)
+        {
+            throw new Exception(
+                $"Kafka message not persisted. Status={result.Status}"
+            );
+        }
     }
+
 
     public void Dispose() => _producer.Dispose();
 }

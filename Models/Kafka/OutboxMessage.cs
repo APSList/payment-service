@@ -1,21 +1,42 @@
-﻿namespace payment_service.Models.Kafka;
+﻿using System;
+using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations.Schema;
 
+namespace payment_service.Models.Kafka;
+
+[Table("outbox_message")]
 public class OutboxMessage
 {
+    [Key]
+    [DatabaseGenerated(DatabaseGeneratedOption.Identity)]
+    [Column("id")]
     public long Id { get; set; }
-    public DateTimeOffset CreatedAtUtc { get; set; }
 
-    public string Topic { get; set; } = default!;
-    public string Key { get; set; } = default!;
+    [Column("created_at_utc")]
+    public DateTimeOffset CreatedAtUtc { get; set; } = DateTimeOffset.UtcNow;
 
-    public string MessageType { get; set; } = default!;
+    [Column("topic")]
+    public string Topic { get; set; } = string.Empty;
+
+    [Column("key")]
+    public string Key { get; set; } = string.Empty;
+
+    [Column("message_type")]
+    public string MessageType { get; set; } = string.Empty;
+
+    [Column("message_id")]
     public Guid MessageId { get; set; }
-    public string CorrelationId { get; set; } = default!;
+
+    [Column("correlation_id")]
+    public string CorrelationId { get; set; } = string.Empty;
 
     /// <summary>Serialized MessageEnvelope bytes.</summary>
-    public byte[] Payload { get; set; } = default!;
+    [Column("payload")]
+    public byte[] Payload { get; set; } = Array.Empty<byte>();
 
+    [Column("sent_at_utc")]
     public DateTimeOffset? SentAtUtc { get; set; }
+
+    [Column("last_error")]
     public string? LastError { get; set; }
 }
-
