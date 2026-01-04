@@ -5,7 +5,7 @@ using payment_service.Models.PaymentConfirmation;
 namespace payment_service.Controllers;
 
 [ApiController]
-[Route("api/payment_confirmation")]
+[Route("payment_confirmation")]
 public class PaymentConfirmationController : ControllerBase
 {
     private readonly IPaymentConfirmationService _service;

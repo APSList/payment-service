@@ -1,0 +1,18 @@
+@ingress = http://20.250.189.133
+
+### Get all payments via ingress (opomba: pri tvojem rewrite je lahko /payment/payment)
+GET {{ingress}}/payment/payment
+Host: hostflow.dev
+Accept: application/json
+
+### Create payment via ingress
+POST {{ingress}}/payment/payment
+Host: hostflow.dev
+Content-Type: application/json
+Accept: application/json
+
+{
+  "organizationId": 1,
+  "reservationId": 1235,
+  "amount": 49.99
+}

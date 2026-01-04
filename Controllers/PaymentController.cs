@@ -3,7 +3,7 @@ using payment_service.Interfaces;
 using payment_service.Models.Payment;
 
 [ApiController]
-[Route("payment")]
+[Route("payments")]
 [Produces("application/json")]
 public class PaymentController : ControllerBase
 {
