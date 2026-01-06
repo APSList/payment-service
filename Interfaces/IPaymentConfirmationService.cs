@@ -4,7 +4,7 @@ namespace payment_service.Interfaces;
 
 public interface IPaymentConfirmationService
 {
-    Task<PaymentConfirmation?> GetByIdAsync(int id);
+    Task<PaymentConfirmation?> GetByIdAsync(int paymentId);
     Task<PaymentConfirmation> GenerateAsync(int? paymentId, int? organizationId, int? customerId, decimal? amount);
-    Task<byte[]> DownloadAsync(int confirmationId);
+    Task<byte[]> DownloadAsync(int paymentId);
 }

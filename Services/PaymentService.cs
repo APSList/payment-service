@@ -1,14 +1,13 @@
 ﻿using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
-using payment_service.Database; // DbContext namespace
+using payment_service.Database;
 using payment_service.Helpers;
 using payment_service.Interfaces;
 using payment_service.Models.Kafka;
 using payment_service.Models.Payment;
-using payment_service.Models.Stripe;
 using payment_service.Options;
+using Serilog;
 using Stripe;
-using Stripe.Checkout;
 
 namespace payment_service.Services;
 
@@ -17,16 +16,23 @@ public class PaymentService : IPaymentService
     private readonly PaymentDbContext _context;
     private readonly IStripeIntegrationService _stripeService;
     private readonly IPaymentConfirmationService _paymentConfirmationService;
+    private readonly IKafkaProducer _kafkaProducerService;
     private readonly KafkaOptions _kafkaOptions;
-    public PaymentService(PaymentDbContext context, IStripeIntegrationService stripeService, IPaymentConfirmationService paymentConfirmationService, IOptions<KafkaOptions> kafkaOptions)
+
+    public PaymentService(
+        PaymentDbContext context,
+        IStripeIntegrationService stripeService,
+        IPaymentConfirmationService paymentConfirmationService,
+        IOptions<KafkaOptions> kafkaOptions,
+        IKafkaProducer kafkaProducerService)
     {
         _context = context;
         _stripeService = stripeService;
         _paymentConfirmationService = paymentConfirmationService;
         _kafkaOptions = kafkaOptions.Value;
+        _kafkaProducerService = kafkaProducerService;
     }
 
-    // GET /payments
     public async Task<List<Payment>> GetPaymentsAsync(PaymentFilter filter)
     {
         return await _context.Payments
@@ -34,7 +40,6 @@ public class PaymentService : IPaymentService
             .ToListAsync();
     }
 
-    // GET /payments/{id}
     public async Task<Payment?> GetPaymentByIdAsync(int paymentId)
     {
         return await _context.Payments
@@ -42,35 +47,61 @@ public class PaymentService : IPaymentService
             .FirstOrDefaultAsync(p => p.Id == paymentId);
     }
 
-    // POST /payments
     public async Task<string> InsertPaymentAsync(PaymentCreateRequestDTO dto)
     {
-        // 1️⃣ ustvari checkout link
-        var session = await _stripeService.CreateCheckoutSessionAsync(dto);
-
-        // 2️⃣ shrani payment kot PENDING
-        var payment = new Payment
+        if(dto.CustomerId is null || dto.OrganizationId is null || dto.ReservationId is null)
         {
-            OrganizationId = dto.OrganizationId!.Value,
-            ReservationId = dto.ReservationId!.Value,
-            Amount = dto.Amount!.Value,
-            Status = "pending",
-            CreatedAt = DateTime.UtcNow,
-            CreatedBy = "SYSTEM"
-        };
+            Log.Warning("PaymentService.InsertPaymentAsync; Validation failed all fields are required");
+            return string.Empty;
+        }
 
-        _context.Payments.Add(payment);
-        await _context.SaveChangesAsync();
+        Stripe.Checkout.Session? session = null;
+        PaymentIntent? paymentIntent = null;
 
+        try
+        {
+            // Ustvari Stripe Checkout session
+            session = await _stripeService.CreateCheckoutSessionAsync(dto);
 
-        //TODO PREMAKNI POTEM DRUGAME!
-        // 3️⃣ TODO: pošlji link userju (email / sms / push)
-        // await _messageService.SendPaymentLink(checkoutUrl);
+            if (session == null)
+            {
+                Log.Warning(
+                    "PaymentService.InsertPaymentAsync; Failed to create Stripe Checkout session or PaymentIntentId missing. OrganizationId {OrganizationId}, ReservationId {ReservationId}",
+                    dto.OrganizationId,
+                    dto.ReservationId
+                );
+                return string.Empty;
+            }
 
-        await SendToBooking(payment, null);
+            // Shrani payment kot PROCESSING 
+            var payment = new Payment
+            {
+                SessionId = session.Id,
+                OrganizationId = dto.OrganizationId,
+                ReservationId = dto.ReservationId,
+                CustomerId = dto.CustomerId,
+                Amount = dto.Amount!.Value,
+                Status = StripePaymentIntentHelper.Processing,
+                CreatedAt = DateTime.UtcNow,
+                CreatedBy = "SYSTEM"
+            };
 
+            _context.Payments.Add(payment);
+            await _context.SaveChangesAsync();
 
-        return session.Url;
+            return session.Url;
+        }
+        catch (Exception ex)
+        {
+            Log.Error(
+                ex,
+                "PaymentService.InsertPaymentAsync; Error while creating payment. OrganizationId {OrganizationId}, ReservationId {ReservationId}",
+                dto.OrganizationId,
+                dto.ReservationId
+            );
+
+            return string.Empty;
+        }
     }
 
     // PUT /payments/{id}
@@ -82,7 +113,7 @@ public class PaymentService : IPaymentService
 
         payment.Amount = dto.Amount;
         payment.Status = dto.Status;
-        payment.UpdatedBy = "TODO";
+        payment.UpdatedBy = "USER"; // TODO
         payment.UpdatedAt = DateTime.UtcNow;
 
         _context.Payments.Update(payment);
@@ -113,19 +144,44 @@ public class PaymentService : IPaymentService
         if (payment == null)
             return false;
 
-        // Confirm on Stripe
-        var intent = await _stripeService.ConfirmPaymentIntentAsync(payment.PaymentIntentId);
+        try
+        {
+            // Confirm on Stripe
+            var intent = await _stripeService.ConfirmPaymentIntentAsync(payment.PaymentIntentId);
 
-        // Update status based on Stripe result
-        payment.Status = intent.Status;
-        payment.UpdatedAt = DateTime.UtcNow;
+            // Update status based on Stripe result
+            payment.Status = intent.Status;
+            payment.UpdatedAt = DateTime.UtcNow;
+            payment.UpdatedBy = "USER"; //TODO
 
-        await _paymentConfirmationService.GenerateAsync(payment.Id, payment.OrganizationId, 1, payment.Amount);
+            // Create confirmation
+            if (StripePaymentIntentHelper.EqualsStatus(intent.Status, StripePaymentIntentHelper.Succeeded))
+            {
+                await _paymentConfirmationService
+                    .GenerateAsync(payment.Id, payment.OrganizationId, 1, payment.Amount);
 
-        await _context.SaveChangesAsync();
+                await _context.SaveChangesAsync();
+                await SendPaymentActionToBooking(payment, intent);
 
-        //SendToBooking(payment, intent);
-        return true;
+                return true;
+            }
+            else
+            {
+                Log.Warning(
+                    "PaymentService.ConfirmPaymentAsync; Payment intent not succeeded for PaymentId {PaymentId}. Status: {Status}",
+                    paymentId,
+                    intent.Status);
+            }
+        }
+        catch (Exception ex)
+        {
+            Log.Error(
+                ex,
+                "PaymentService.ConfirmPaymentAsync; Error confirming payment intent for PaymentId {PaymentId}",
+                paymentId);
+        }
+
+        return false;
     }
 
     public async Task<bool> CancelPaymentAsync(int paymentId)
@@ -136,47 +192,98 @@ public class PaymentService : IPaymentService
         if (payment == null)
             return false;
 
-        // Cancel on Stripe
-        var intent = await _stripeService.ConfirmPaymentIntentAsync(payment.PaymentIntentId);
+        if (StripePaymentIntentHelper.EqualsStatus(payment.Status, StripePaymentIntentHelper.Succeeded))
+        {
+            Log.Warning(
+                "PaymentService.CancelPaymentAsync; Payment intent already succeeded and cannot be canceled. PaymentId {PaymentId}",
+                paymentId);
+            return false;
+        }
 
-        payment.Status = intent.Status;
-        payment.UpdatedAt = DateTime.UtcNow;
+        try
+        {
+            // Cancel on Stripe
+            var intent = await _stripeService.CancelPaymentIntentAsync(payment.PaymentIntentId);
 
-        await _context.SaveChangesAsync();
-        return true;
+            payment.Status = intent.Status;
+            payment.UpdatedAt = DateTime.UtcNow;
+            payment.UpdatedBy = "USER";
+
+            if (StripePaymentIntentHelper.EqualsStatus(intent.Status, StripePaymentIntentHelper.Canceled))
+            {
+                await _context.SaveChangesAsync();
+                await SendPaymentActionToBooking(payment, intent);
+                return true;
+            }
+            else
+            {
+                await _context.SaveChangesAsync();
+
+                Log.Warning(
+                    "PaymentService.CancelPaymentAsync; Payment intent not canceled for PaymentId {PaymentId}. Status: {Status}",
+                    paymentId,
+                    intent.Status);
+            }
+        }
+        catch (Exception ex)
+        {
+            Log.Error(
+                ex,
+                "PaymentService.CancelPaymentAsync; Error canceling payment intent for PaymentId {PaymentId}",
+                paymentId);
+        }
+
+        return false;
     }
 
-    private async Task SendToBooking(Payment payment, PaymentIntent intent = null)
+    public async Task SendPaymentActionToBooking(Payment payment, PaymentIntent? intent)
     {
-        //if (string.Equals(intent.Status, "succeeded", StringComparison.OrdinalIgnoreCase))
-        //{
-            var correlationId = payment.ReservationId.ToString(); // ali pa HTTP request correlation id
+        var correlationId = payment.ReservationId.ToString() ?? string.Empty;
 
-            var evt = new PaymentSucceeded(
-                PaymentId: payment.Id,
-                OrganizationId: payment.OrganizationId,
-                ReservationId: payment.ReservationId,
-                Amount: payment.Amount,
-                StripePaymentIntentId: payment.PaymentIntentId,
-                StripeStatus: "TODO", //intent.Status
-                PaidAtUtc: DateTimeOffset.UtcNow
-            );
+        var stripeStatus = intent?.Status ?? payment.Status;
 
-            var envelope = new MessageEnvelope<PaymentSucceeded>(
-                MessageId: Guid.NewGuid(),
-                MessageType: nameof(PaymentSucceeded),
-                OccurredAt: DateTimeOffset.UtcNow,
-                CorrelationId: correlationId,
-                CausationId: payment.PaymentIntentId,
-                Payload: evt,
-                SchemaVersion: 1
-            );
+        var paymentAction = new PaymentAction(
+            PaymentId: payment.Id,
+            OrganizationId: payment.OrganizationId,
+            ReservationId: payment.ReservationId,
+            Amount: payment.Amount,
+            StripePaymentIntentId: payment.PaymentIntentId,
+            StripeStatus: stripeStatus,
+            PaidAtUtc: DateTimeOffset.UtcNow
+        );
 
-            // Outbox insert (topic + key za ordering po reservation)
+        var envelope = new MessageEnvelope<PaymentAction>(
+            MessageId: Guid.NewGuid(),
+            MessageType: nameof(PaymentAction),
+            OccurredAt: DateTimeOffset.UtcNow,
+            CorrelationId: correlationId,
+            CausationId: payment.PaymentIntentId,
+            Payload: paymentAction,
+            SchemaVersion: 1
+        );
 
-            var outbox = OutboxEnqueuerHelper.Create(_kafkaOptions.PaymentsTopic, key: payment.ReservationId.ToString(), envelope);
+        // Outbox insert (topic + key po [reservation + payment])
+        var key = correlationId + payment.Id.ToString();
+        var outbox = OutboxEnqueuerHelper.Create(_kafkaOptions.PaymentsTopic, key: key, envelope);
+
+        // Directly try to call kafka; if not succeeded, save in outbox for later
+        try
+        {
+            await _kafkaProducerService.ProduceRawAsync(outbox.Topic, outbox.Key, outbox.Payload);
+        }
+        catch (Exception ex)
+        {
+            outbox.LastError = ex.Message;
+
+            Log.Error(
+                ex,
+                "PaymentService.SendToBooking; Failed publishing payment message to Kafka, storing in outbox message. PaymentId {PaymentId}, Topic {Topic}, Key {Key}",
+                payment.Id,
+                outbox.Topic,
+                outbox.Key);
+
             _context.OutboxMessages.Add(outbox);
             await _context.SaveChangesAsync();
-        //}
+        }
     }
 }

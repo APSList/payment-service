@@ -15,7 +15,7 @@ public class PaymentConfirmationController : ControllerBase
         _service = service;
     }
 
-    [HttpGet("{id:int}")]
+    [HttpGet("{paymentId:int}")]
     public async Task<IActionResult> GetById(int id)
     {
         var confirmation = await _service.GetByIdAsync(id);
@@ -25,12 +25,12 @@ public class PaymentConfirmationController : ControllerBase
         return Ok(confirmation);
     }
 
-    [HttpGet("{id:int}/download")]
-    public async Task<IActionResult> Download(int id)
+    [HttpGet("{paymentId:int}/download")]
+    public async Task<IActionResult> Download(int paymentId)
     {
         try
         {
-            var pdfBytes = await _service.DownloadAsync(id);
+            var pdfBytes = await _service.DownloadAsync(paymentId);
 
             if(pdfBytes is null)
             {
@@ -41,7 +41,7 @@ public class PaymentConfirmationController : ControllerBase
             return File(
                 pdfBytes,
                 "application/pdf",
-                fileDownloadName: $"payment_confirmation_{id}.pdf"
+                fileDownloadName: $"payment_confirmation_{paymentId}.pdf"
             );
         }
         catch (FileNotFoundException)

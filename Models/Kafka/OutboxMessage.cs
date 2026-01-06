@@ -30,9 +30,8 @@ public class OutboxMessage
     [Column("correlation_id")]
     public string CorrelationId { get; set; } = string.Empty;
 
-    /// <summary>Serialized MessageEnvelope bytes.</summary>
     [Column("payload")]
-    public byte[] Payload { get; set; } = Array.Empty<byte>();
+    public byte[] Payload { get; set; } = [];
 
     [Column("sent_at_utc")]
     public DateTimeOffset? SentAtUtc { get; set; }

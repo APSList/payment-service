@@ -14,7 +14,7 @@ public class PaymentController : ControllerBase
         _paymentService = paymentService;
     }
 
-    // GET /payment
+    // GET /payments
     [HttpGet]
     [EndpointSummary("Get all payments")]
     [ProducesResponseType(StatusCodes.Status200OK, Type = typeof(List<Payment>))]
@@ -24,7 +24,7 @@ public class PaymentController : ControllerBase
         return Ok(payments);
     }
 
-    // GET /payment/{id}
+    // GET /payments/{id}
     [HttpGet("{id:int}")]
     [EndpointSummary("Retrieves the payment matching the specified ID.")]
     [ProducesResponseType(StatusCodes.Status200OK, Type = typeof(Payment))]
@@ -38,19 +38,25 @@ public class PaymentController : ControllerBase
         return Ok(payment);
     }
 
-    // POST /payment
+    // POST /payments
     [HttpPost]
-    [EndpointSummary("Inserts a new payment and returns its payment intent ID from Stripe.")]
-    [ProducesResponseType(StatusCodes.Status201Created, Type = typeof(int))]
+    [EndpointSummary("Creates a new payment and returns the Stripe Checkout URL.")]
+    [ProducesResponseType(StatusCodes.Status200OK, Type = typeof(string))]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [Consumes("application/json")]
-    public async Task<ActionResult<int>> Insert([FromBody] PaymentCreateRequestDTO createRequestDTO)
+    public async Task<ActionResult<string>> Insert([FromBody] PaymentCreateRequestDTO createRequestDTO)
     {
-        var paymentIntent = await _paymentService.InsertPaymentAsync(createRequestDTO);
-        return Ok(paymentIntent);
+        var paymentUrl = await _paymentService.InsertPaymentAsync(createRequestDTO);
+
+        if (string.IsNullOrWhiteSpace(paymentUrl))
+        {
+            return BadRequest("Unable to create payment (please contact support).");
+        }
+
+        return Ok(paymentUrl);
     }
 
-    // PUT /payment/{id}
+    // PUT /payments/{id}
     [HttpPut("{id:int}")]
     [EndpointSummary("Updates the payment matching the specified ID.")]
     [ProducesResponseType(StatusCodes.Status200OK, Type = typeof(int))]
@@ -66,7 +72,7 @@ public class PaymentController : ControllerBase
         return Ok(updated);
     }
 
-    // DELETE /payment/{id}
+    // DELETE /payments/{id}
     [HttpDelete("{id:int}")]
     [EndpointSummary("Deletes the payment matching the specified ID.")]
     [ProducesResponseType(StatusCodes.Status200OK)]
@@ -81,6 +87,8 @@ public class PaymentController : ControllerBase
     }
 
     [HttpPost("{id:int}/confirm")]
+    [EndpointSummary("Manual payment confirm matching the specified ID.")]
+
     public async Task<ActionResult> ConfirmPayment(int id)
     {
         var result = await _paymentService.ConfirmPaymentAsync(id);
@@ -89,6 +97,8 @@ public class PaymentController : ControllerBase
     }
 
     [HttpPost("{id:int}/cancel")]
+    [EndpointSummary("Manual payment cancel matching the specified ID.")]
+
     public async Task<ActionResult> CancelPayment(int id)
     {
         var result = await _paymentService.CancelPaymentAsync(id);
