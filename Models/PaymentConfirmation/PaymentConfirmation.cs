@@ -26,9 +26,6 @@ public class PaymentConfirmation
     [Column("issue_date")]
     public DateTime? IssueDate { get; set; }
 
-    [Column("due_date")]
-    public DateTime? DueDate { get; set; }
-
     [Column("amount")]
     public decimal? Amount { get; set; }
 

@@ -6,6 +6,7 @@ using Npgsql.Internal;
 using payment_service.Database;
 using payment_service.Helpers;
 using payment_service.Interfaces;
+using payment_service.Models.Payment;
 using payment_service.Models.PaymentConfirmation;
 using System;
 using System.IO;
@@ -23,10 +24,10 @@ public class PaymentConfirmationService : IPaymentConfirmationService
         _context = context;
     }
 
-    public async Task<PaymentConfirmation?> GetByIdAsync(int id)
+    public async Task<PaymentConfirmation?> GetByIdAsync(int paymentId)
     {
         return await _context.PaymentConfirmations
-            .FirstOrDefaultAsync(x => x.Id == id);
+            .FirstOrDefaultAsync(x => x.PaymentId == paymentId);
     }
 
     public async Task<PaymentConfirmation> GenerateAsync(
@@ -43,7 +44,6 @@ public class PaymentConfirmationService : IPaymentConfirmationService
             Amount = amount,
             TxtAmount = amount.HasValue ? PdfHelper.NumberToWords(amount.Value) : "",
             IssueDate = DateTime.UtcNow,
-            DueDate = DateTime.UtcNow.AddDays(7),
             InvoiceNumber = organizationId.HasValue ? PdfHelper.GenerateInvoiceNumber(organizationId.Value) : "",
         };
 
@@ -59,9 +59,9 @@ public class PaymentConfirmationService : IPaymentConfirmationService
         return confirmation;
     }
 
-    public async Task<byte[]> DownloadAsync(int confirmationId)
+    public async Task<byte[]> DownloadAsync(int paymentId)
     {
-        var confirmation = await GetByIdAsync(confirmationId);
+        var confirmation = await GetByIdAsync(paymentId);
 
         if (confirmation == null || confirmation.PdfBlob == null)
             return null;

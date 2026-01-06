@@ -13,7 +13,7 @@ public class StripeWebhookController : ControllerBase
         _stripeWebhookService = stripeWebhookService;
     }
 
-    [HttpPost("stripe-webhook")]
+    [HttpPost("")]
     public async Task<IActionResult> Handle()
     {
         var json = await new StreamReader(HttpContext.Request.Body).ReadToEndAsync();

@@ -53,6 +53,7 @@ public class StripeIntegrationService : IStripeIntegrationService
             Mode = "payment",
             SuccessUrl = "https://frontend.app/payment-success?session_id={CHECKOUT_SESSION_ID}",
             CancelUrl = "https://frontend.app/payment-cancel",
+            Expand = new List<string> { "payment_intent" },
             LineItems = new List<Stripe.Checkout.SessionLineItemOptions>
         {
             new()

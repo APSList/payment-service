@@ -1,6 +1,6 @@
 ﻿namespace payment_service.Models.Kafka;
 
-public sealed record PaymentSucceeded(
+public sealed record PaymentAction(
     int? PaymentId,
     int? OrganizationId,
     int? ReservationId,
