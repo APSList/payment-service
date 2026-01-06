@@ -60,22 +60,11 @@ builder.Host.UseSerilog((context, config) =>
 {
     config
         .MinimumLevel.Information()
-        .MinimumLevel.Override(
-            "Microsoft.EntityFrameworkCore.Database.Command",
-            Serilog.Events.LogEventLevel.Warning)
-
-        // (opcijsko) še bolj na splošno
-        .MinimumLevel.Override(
-            "Microsoft.EntityFrameworkCore",
-            Serilog.Events.LogEventLevel.Warning)
+        .MinimumLevel.Override("Microsoft.AspNetCore", Serilog.Events.LogEventLevel.Warning) // Manjši šum
+        .MinimumLevel.Override("Microsoft.EntityFrameworkCore", Serilog.Events.LogEventLevel.Warning)
         .Enrich.FromLogContext()
         .Enrich.WithProperty("Service", "payment-service")
-        .WriteTo.Console()
-        .WriteTo.Http(
-            requestUri: "http://localhost:5044", // lokalni Logstash
-            queueLimitBytes: null,
-            textFormatter: new RenderedCompactJsonFormatter()
-        );
+        .WriteTo.Console(new RenderedCompactJsonFormatter());
 });
 
 //Health checks
