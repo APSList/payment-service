@@ -31,8 +31,8 @@ public sealed class KafkaProducer : IKafkaProducer, IDisposable
 
         if (!string.IsNullOrWhiteSpace(o.SaslUsername) && !string.IsNullOrWhiteSpace(o.SaslPassword))
         {
-            config.SecurityProtocol = Enum.Parse<SecurityProtocol>(o.SecurityProtocol ?? "SaslPlaintext", ignoreCase: true);
-            config.SaslMechanism = Enum.Parse<SaslMechanism>(o.SaslMechanism ?? "ScramSha256", ignoreCase: true);
+            config.SecurityProtocol = SecurityProtocol.SaslSsl;
+            config.SaslMechanism = SaslMechanism.Plain;
             config.SaslUsername = o.SaslUsername;
             config.SaslPassword = o.SaslPassword;
         }
