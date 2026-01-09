@@ -1,6 +1,7 @@
-using Microsoft.AspNetCore.Diagnostics.HealthChecks;
+ï»¿using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
+using Microsoft.OpenApi;
 using Npgsql;
 using payment_service.Database;
 using payment_service.Interfaces;
@@ -60,7 +61,7 @@ builder.Host.UseSerilog((context, config) =>
 {
     config
         .MinimumLevel.Information()
-        .MinimumLevel.Override("Microsoft.AspNetCore", Serilog.Events.LogEventLevel.Warning) // Manjši šum
+        .MinimumLevel.Override("Microsoft.AspNetCore", Serilog.Events.LogEventLevel.Warning) // ManjÅ¡i Å¡um
         .MinimumLevel.Override("Microsoft.EntityFrameworkCore", Serilog.Events.LogEventLevel.Warning)
         .Enrich.FromLogContext()
         .Enrich.WithProperty("Service", "payment-service")
@@ -78,12 +79,32 @@ builder.Services.AddHealthChecks()
 
 var app = builder.Build();
 
-// Configure the HTTP request pipeline.
-if (app.Environment.IsDevelopment())
+var pathBase = builder.Configuration["PathBase"];
+if (!string.IsNullOrWhiteSpace(pathBase))
 {
-    app.UseSwagger();
-    app.UseSwaggerUI();
+    if (!pathBase.StartsWith("/")) pathBase = "/" + pathBase;
+    app.UsePathBase(pathBase);
 }
+
+
+app.UseSwagger(c =>
+{
+    c.PreSerializeFilters.Add((swaggerDoc, httpReq) =>
+    {
+        var basePath = httpReq.PathBase.Value;
+        swaggerDoc.Servers = new List<OpenApiServer>
+        {
+            new() { Url = basePath }
+        };
+    });
+});
+app.UseSwaggerUI(c =>
+{
+    c.RoutePrefix = "swagger";
+    c.SwaggerEndpoint("./v1/swagger.json", "payment-service v1");
+});
+
+
 
 // Health endpoints
 app.MapHealthChecks("/health/live", new HealthCheckOptions
