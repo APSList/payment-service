@@ -79,25 +79,23 @@ builder.Services.AddHealthChecks()
 
 var app = builder.Build();
 
-var pathBase = builder.Configuration["PathBase"];
-if (!string.IsNullOrWhiteSpace(pathBase))
-{
-    if (!pathBase.StartsWith("/")) pathBase = "/" + pathBase;
-    app.UsePathBase(pathBase);
-}
-
-
 app.UseSwagger(c =>
 {
-    c.PreSerializeFilters.Add((swaggerDoc, httpReq) =>
+    if (app.Environment.IsDevelopment())
     {
-        var basePath = httpReq.PathBase.Value;
-        swaggerDoc.Servers = new List<OpenApiServer>
+        var cfgPrefix = builder.Configuration["SwaggerPrefix"];
+
+        c.PreSerializeFilters.Add((swaggerDoc, httpReq) =>
         {
-            new() { Url = basePath }
+            var basePath = httpReq.PathBase.Value;
+            swaggerDoc.Servers = new List<OpenApiServer>
+        {
+            new() { Url = $"{httpReq.Scheme}://{httpReq.Host}{cfgPrefix}" }
         };
-    });
+        });
+    }
 });
+
 app.UseSwaggerUI(c =>
 {
     c.RoutePrefix = "swagger";
