@@ -227,3 +227,76 @@ docker run -d --name kafka-ui \
 
 ---
 
+## CI/CD in pravila razvoja
+
+### Pregled
+CI/CD je sestavljen iz dveh delov:
+1. **Service repo (payment-service)**: build/test + izdelava in push Docker image-a.
+2. **Deployment repo (npr. `APSList/Hostflow`)**: Helm chart + `values*` kot “source of truth” za deploy v Kubernetes.
+
+---
+
+### GitHub Actions workflowi
+
+#### PR validacija (`pr.yaml`)
+- **Trigger**: PR → `main`
+- **Koraki**: restore → build → test
+- **Pravila**: naslov PR mora slediti “conventional” prefiksom:
+  - `feat:`, `fix:`, `chore:`, `docs:`, `style:`, `refactor:`, `perf:`, `test:`, `ci:`
+
+#### DEV CI/CD (`dev.yaml`)
+- **Trigger**: `push` → `dev`
+- **Koraki**:
+  1) restore/build/test  
+  2) build Docker image  
+  3) push image v registry z tagom **kratkega SHA** (`${GITHUB_SHA::7}`)  
+  4) checkout deployment repota (`APSList/Hostflow`, veja `dev`)  
+  5) `helm upgrade --install` za **DEV** okolje (nastavi `image.tag` na kratek SHA)
+
+#### Release PR (`release-please.yaml`)
+- **Trigger**: `push` → `main`
+- **Namen**: `release-please` pripravi/posodobi **release PR** (changelog + bump verzije) na podlagi conventional sprememb.
+
+#### PROD release (`release.yaml`)
+- **Trigger**: `git tag vX.Y.Z` (npr. `v1.2.3`)
+- **Koraki**:
+  1) restore/build/test  
+  2) build + push Docker image z tagom **verzije** (`vX.Y.Z`)  
+  3) checkout deployment repota (`APSList/Hostflow`, privzeta veja)  
+  4) `helm upgrade --install` za **PROD** okolje (nastavi `image.tag` na `vX.Y.Z`)
+
+---
+
+### Deploy model (payment-service repo → deployment repo)
+
+1. **payment-service repo** zgradi artefakt:
+   - Docker image se zgradi iz trenutnega commita.
+   - Image se pushne v registry (DockerHub/registry).
+
+2. **Deployment repo** definira, *kako* in *kam* se deploya:
+   - Helm chart + `values.yaml` (in pogosto `values-dev.yaml`/`values-prod.yaml`) so v deployment repotu.
+   - Deployment repo je “source of truth” za:
+     - namespace, ingress, replicas, resources
+     - env var/secret reference (DB, Stripe, Kafka, itd.)
+     - health probes, autoscaling, service/ports
+
+3. **Helm deploy**:
+   - Pipeline naredi `helm upgrade --install` in ob tem nastavi vsaj:
+     - `image.repository`
+     - `image.tag` (DEV = kratek SHA, PROD = verzija)
+
+---
+
+### Branching pravila
+
+- Feature razvoj poteka na vejah tipa `feat/...` ali `fix/...`.
+- PR se odpira proti `main`.
+- Veja `dev` je namenjena integraciji in avtomatskemu deployu v DEV.
+
+---
+
+### Versioning in release pravila
+
+- Verzioniranje in release notes so avtomatizirani prek **release-please**.
+- Produkcijski deploy se sproži izključno z **git tagom** `vX.Y.Z` (semver).
+- Conventional prefiksi (`feat:`, `fix:`, …) vplivajo na changelog/verzijo.
