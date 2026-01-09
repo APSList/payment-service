@@ -79,22 +79,27 @@ builder.Services.AddHealthChecks()
 
 var app = builder.Build();
 
-app.UseSwagger(c =>
-{
-    if (app.Environment.IsDevelopment())
-    {
-        var cfgPrefix = builder.Configuration["SwaggerPrefix"];
+var cfgPrefix = builder.Configuration["SwaggerPrefix"];
 
+if (!string.IsNullOrEmpty(cfgPrefix))
+{
+    app.UseSwagger(c =>
+    {
         c.PreSerializeFilters.Add((swaggerDoc, httpReq) =>
         {
             var basePath = httpReq.PathBase.Value;
             swaggerDoc.Servers = new List<OpenApiServer>
-        {
-            new() { Url = $"{httpReq.Scheme}://{httpReq.Host}{cfgPrefix}" }
-        };
+    {
+        new() { Url = $"https://{httpReq.Host}{cfgPrefix}" }
+    };
         });
-    }
-});
+
+    });
+}
+else
+{
+    app.UseSwagger();
+}
 
 app.UseSwaggerUI(c =>
 {
