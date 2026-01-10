@@ -1,6 +1,8 @@
-﻿using Microsoft.AspNetCore.Mvc;
+﻿using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
 using payment_service.Interfaces;
 using payment_service.Models.Payment;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
 
 [ApiController]
 [Route("payments")]
@@ -17,6 +19,7 @@ public class PaymentController : ControllerBase
     // GET /payments
     [HttpGet]
     [EndpointSummary("Get all payments")]
+    [Authorize(Policy = "OrgRequired")]
     [ProducesResponseType(StatusCodes.Status200OK, Type = typeof(List<Payment>))]
     public async Task<ActionResult<List<Payment>>> GetPayments([FromQuery] PaymentFilter filter)
     {
@@ -27,6 +30,7 @@ public class PaymentController : ControllerBase
     // GET /payments/{id}
     [HttpGet("{id:int}")]
     [EndpointSummary("Retrieves the payment matching the specified ID.")]
+    [Authorize(Policy = "OrgRequired")]
     [ProducesResponseType(StatusCodes.Status200OK, Type = typeof(Payment))]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<ActionResult<Payment>> GetById(int id)
@@ -59,6 +63,7 @@ public class PaymentController : ControllerBase
     // PUT /payments/{id}
     [HttpPut("{id:int}")]
     [EndpointSummary("Updates the payment matching the specified ID.")]
+    [Authorize(Policy = "OrgRequired")]
     [ProducesResponseType(StatusCodes.Status200OK, Type = typeof(int))]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
@@ -75,6 +80,7 @@ public class PaymentController : ControllerBase
     // DELETE /payments/{id}
     [HttpDelete("{id:int}")]
     [EndpointSummary("Deletes the payment matching the specified ID.")]
+    [Authorize(Policy = "OrgRequired")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<ActionResult> Delete(int id)
@@ -87,6 +93,7 @@ public class PaymentController : ControllerBase
     }
 
     [HttpPost("{id:int}/confirm")]
+    [Authorize(Policy = "OrgRequired")]
     [EndpointSummary("Manual payment confirm matching the specified ID.")]
 
     public async Task<ActionResult> ConfirmPayment(int id)
@@ -97,6 +104,7 @@ public class PaymentController : ControllerBase
     }
 
     [HttpPost("{id:int}/cancel")]
+    [Authorize(Policy = "OrgRequired")]
     [EndpointSummary("Manual payment cancel matching the specified ID.")]
 
     public async Task<ActionResult> CancelPayment(int id)

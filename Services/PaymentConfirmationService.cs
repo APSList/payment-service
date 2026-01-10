@@ -1,32 +1,29 @@
-﻿using iText.Kernel.Pdf;
-using iText.Layout;
-using iText.Layout.Element;
-using Microsoft.EntityFrameworkCore;
-using Npgsql.Internal;
+﻿using Microsoft.EntityFrameworkCore;
 using payment_service.Database;
 using payment_service.Helpers;
 using payment_service.Interfaces;
-using payment_service.Models.Payment;
 using payment_service.Models.PaymentConfirmation;
-using System;
-using System.IO;
-using System.Reflection.Metadata;
-using System.Threading.Tasks;
 
 namespace payment_service.Services;
 
 public class PaymentConfirmationService : IPaymentConfirmationService
 {
     private readonly PaymentDbContext _context;
+    private readonly IOrganizationContext _org;
 
-    public PaymentConfirmationService(PaymentDbContext context)
+    public PaymentConfirmationService(PaymentDbContext context, IOrganizationContext orgContext)
     {
         _context = context;
+        _org = orgContext;
     }
 
     public async Task<PaymentConfirmation?> GetByIdAsync(int paymentId)
     {
+        var orgId = _org.OrganizationId;
+
         return await _context.PaymentConfirmations
+            .AsNoTracking()
+            .Where(x => x.OrganizationId == orgId)
             .FirstOrDefaultAsync(x => x.PaymentId == paymentId);
     }
 
@@ -36,22 +33,22 @@ public class PaymentConfirmationService : IPaymentConfirmationService
         int? customerId,
         decimal? amount)
     {
+        var orgId = _org.OrganizationId;
+
         var confirmation = new PaymentConfirmation
         {
             PaymentId = paymentId,
-            OrganizationId = organizationId,
+            OrganizationId = orgId,
             CustomerId = customerId,
             Amount = amount,
             TxtAmount = amount.HasValue ? PdfHelper.NumberToWords(amount.Value) : "",
             IssueDate = DateTime.UtcNow,
-            InvoiceNumber = organizationId.HasValue ? PdfHelper.GenerateInvoiceNumber(organizationId.Value) : "",
+            InvoiceNumber = PdfHelper.GenerateInvoiceNumber(orgId),
         };
 
-        // First save (we need Id for invoice number if needed)
         _context.PaymentConfirmations.Add(confirmation);
         await _context.SaveChangesAsync();
 
-        // Then generate PDF BLOB and store in DB
         confirmation.PdfBlob = PdfHelper.GeneratePdfBlob(confirmation);
 
         await _context.SaveChangesAsync();
@@ -61,12 +58,16 @@ public class PaymentConfirmationService : IPaymentConfirmationService
 
     public async Task<byte[]> DownloadAsync(int paymentId)
     {
-        var confirmation = await GetByIdAsync(paymentId);
+        var orgId = _org.OrganizationId;
 
-        if (confirmation == null || confirmation.PdfBlob == null)
+        var confirmation = await _context.PaymentConfirmations
+            .AsNoTracking()
+            .Where(x => x.OrganizationId == orgId)
+            .FirstOrDefaultAsync(x => x.PaymentId == paymentId);
+
+        if (confirmation?.PdfBlob == null)
             return null;
 
         return confirmation.PdfBlob;
     }
-
 }

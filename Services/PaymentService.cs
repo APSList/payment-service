@@ -18,62 +18,67 @@ public class PaymentService : IPaymentService
     private readonly IPaymentConfirmationService _paymentConfirmationService;
     private readonly IKafkaProducer _kafkaProducerService;
     private readonly KafkaOptions _kafkaOptions;
+    private readonly IOrganizationContext _org;
 
     public PaymentService(
         PaymentDbContext context,
         IStripeIntegrationService stripeService,
         IPaymentConfirmationService paymentConfirmationService,
         IOptions<KafkaOptions> kafkaOptions,
-        IKafkaProducer kafkaProducerService)
+        IKafkaProducer kafkaProducerService,
+        IOrganizationContext orgContext)
     {
         _context = context;
         _stripeService = stripeService;
         _paymentConfirmationService = paymentConfirmationService;
         _kafkaOptions = kafkaOptions.Value;
         _kafkaProducerService = kafkaProducerService;
+        _org = orgContext;
     }
 
     public async Task<List<Payment>> GetPaymentsAsync(PaymentFilter filter)
     {
-        return await _context.Payments
+        var orgId = _org.OrganizationId;
+
+        var q = _context.Payments
             .AsNoTracking()
-            .ToListAsync();
+            .Where(p => p.OrganizationId == orgId);
+
+        return await q.ToListAsync();
     }
 
     public async Task<Payment?> GetPaymentByIdAsync(int paymentId)
     {
+        var orgId = _org.OrganizationId;
+
         return await _context.Payments
             .AsNoTracking()
+            .Where(p => p.OrganizationId == orgId)
             .FirstOrDefaultAsync(p => p.Id == paymentId);
     }
 
     public async Task<string> InsertPaymentAsync(PaymentCreateRequestDTO dto)
     {
-        if(dto.CustomerId is null || dto.OrganizationId is null || dto.ReservationId is null)
+        if (dto.CustomerId is null || dto.OrganizationId is null || dto.ReservationId is null)
         {
             Log.Warning("PaymentService.InsertPaymentAsync; Validation failed all fields are required");
             return string.Empty;
         }
 
-        Stripe.Checkout.Session? session = null;
-        PaymentIntent? paymentIntent = null;
-
         try
         {
-            // Ustvari Stripe Checkout session
-            session = await _stripeService.CreateCheckoutSessionAsync(dto);
+            var session = await _stripeService.CreateCheckoutSessionAsync(dto);
 
             if (session == null)
             {
                 Log.Warning(
-                    "PaymentService.InsertPaymentAsync; Failed to create Stripe Checkout session or PaymentIntentId missing. OrganizationId {OrganizationId}, ReservationId {ReservationId}",
+                    "PaymentService.InsertPaymentAsync; Failed to create Stripe Checkout session. OrganizationId {OrganizationId}, ReservationId {ReservationId}",
                     dto.OrganizationId,
                     dto.ReservationId
                 );
                 return string.Empty;
             }
 
-            // Shrani payment kot PROCESSING 
             var payment = new Payment
             {
                 SessionId = session.Id,
@@ -104,28 +109,34 @@ public class PaymentService : IPaymentService
         }
     }
 
-    // PUT /payments/{id}
     public async Task<int?> UpdatePaymentAsync(int paymentId, PaymentUpdateRequestDTO dto)
     {
-        var payment = await _context.Payments.FirstOrDefaultAsync(p => p.Id == paymentId);
+        var orgId = _org.OrganizationId;
+
+        var payment = await _context.Payments
+            .Where(p => p.OrganizationId == orgId)
+            .FirstOrDefaultAsync(p => p.Id == paymentId);
+
         if (payment == null)
             return null;
 
         payment.Amount = dto.Amount;
         payment.Status = dto.Status;
-        payment.UpdatedBy = "USER"; // TODO
+        payment.UpdatedBy = _org.Email ?? "USER";
         payment.UpdatedAt = DateTime.UtcNow;
 
-        _context.Payments.Update(payment);
         await _context.SaveChangesAsync();
 
-        return payment.Id.GetHashCode();
+        return payment.Id;
     }
 
-    // DELETE /payments/{id}
     public async Task<int?> DeletePaymentByIdAsync(int paymentId)
     {
-        var payment = await _context.Payments.FirstOrDefaultAsync(p => p.Id == paymentId);
+        var orgId = _org.OrganizationId;
+
+        var payment = await _context.Payments
+            .Where(p => p.OrganizationId == orgId)
+            .FirstOrDefaultAsync(p => p.Id == paymentId);
 
         if (payment == null)
             return null;
@@ -138,7 +149,10 @@ public class PaymentService : IPaymentService
 
     public async Task<bool> ConfirmPaymentAsync(int paymentId)
     {
+        var orgId = _org.OrganizationId;
+
         var payment = await _context.Payments
+            .Where(x => x.OrganizationId == orgId)
             .FirstOrDefaultAsync(x => x.Id == paymentId);
 
         if (payment == null)
@@ -146,19 +160,15 @@ public class PaymentService : IPaymentService
 
         try
         {
-            // Confirm on Stripe
             var intent = await _stripeService.ConfirmPaymentIntentAsync(payment.PaymentIntentId);
 
-            // Update status based on Stripe result
             payment.Status = intent.Status;
             payment.UpdatedAt = DateTime.UtcNow;
-            payment.UpdatedBy = "USER"; //TODO
+            payment.UpdatedBy = _org.Email ?? "USER";
 
-            // Create confirmation
             if (StripePaymentIntentHelper.EqualsStatus(intent.Status, StripePaymentIntentHelper.Succeeded))
             {
-                await _paymentConfirmationService
-                    .GenerateAsync(payment.Id, payment.OrganizationId, 1, payment.Amount);
+                await _paymentConfirmationService.GenerateAsync(payment.Id, payment.OrganizationId, 1, payment.Amount);
 
                 await _context.SaveChangesAsync();
                 await SendPaymentActionToBooking(payment, intent);
@@ -186,7 +196,10 @@ public class PaymentService : IPaymentService
 
     public async Task<bool> CancelPaymentAsync(int paymentId)
     {
+        var orgId = _org.OrganizationId;
+
         var payment = await _context.Payments
+            .Where(x => x.OrganizationId == orgId)
             .FirstOrDefaultAsync(x => x.Id == paymentId);
 
         if (payment == null)
@@ -202,12 +215,11 @@ public class PaymentService : IPaymentService
 
         try
         {
-            // Cancel on Stripe
             var intent = await _stripeService.CancelPaymentIntentAsync(payment.PaymentIntentId);
 
             payment.Status = intent.Status;
             payment.UpdatedAt = DateTime.UtcNow;
-            payment.UpdatedBy = "USER";
+            payment.UpdatedBy = _org.Email ?? "USER";
 
             if (StripePaymentIntentHelper.EqualsStatus(intent.Status, StripePaymentIntentHelper.Canceled))
             {
@@ -239,7 +251,6 @@ public class PaymentService : IPaymentService
     public async Task SendPaymentActionToBooking(Payment payment, PaymentIntent? intent)
     {
         var correlationId = payment.ReservationId.ToString() ?? string.Empty;
-
         var stripeStatus = intent?.Status ?? payment.Status;
 
         var paymentAction = new PaymentAction(
@@ -262,11 +273,9 @@ public class PaymentService : IPaymentService
             SchemaVersion: 1
         );
 
-        // Outbox insert (topic + key po [reservation + payment])
         var key = correlationId + payment.Id.ToString();
         var outbox = OutboxEnqueuerHelper.Create(_kafkaOptions.PaymentsTopic, key: key, envelope);
 
-        // Directly try to call kafka; if not succeeded, save in outbox for later
         try
         {
             await _kafkaProducerService.ProduceRawAsync(outbox.Topic, outbox.Key, outbox.Payload);
