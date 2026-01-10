@@ -33,17 +33,20 @@ public class PaymentConfirmationService : IPaymentConfirmationService
         int? customerId,
         decimal? amount)
     {
-        var orgId = _org.OrganizationId;
+        var payment = await _context.Payments
+            .AsNoTracking()
+            .Where(x => x.Id == paymentId)
+            .FirstOrDefaultAsync();
 
         var confirmation = new PaymentConfirmation
         {
             PaymentId = paymentId,
-            OrganizationId = orgId,
+            OrganizationId = payment?.OrganizationId,
             CustomerId = customerId,
             Amount = amount,
             TxtAmount = amount.HasValue ? PdfHelper.NumberToWords(amount.Value) : "",
             IssueDate = DateTime.UtcNow,
-            InvoiceNumber = PdfHelper.GenerateInvoiceNumber(orgId),
+            InvoiceNumber = PdfHelper.GenerateInvoiceNumber(payment?.OrganizationId ?? 0),
         };
 
         _context.PaymentConfirmations.Add(confirmation);
