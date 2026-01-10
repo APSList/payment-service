@@ -51,8 +51,8 @@ public class StripeIntegrationService : IStripeIntegrationService
         var options = new SessionCreateOptions
         {
             Mode = "payment",
-            SuccessUrl = "https://frontend.app/payment-success?session_id={CHECKOUT_SESSION_ID}",
-            CancelUrl = "https://frontend.app/payment-cancel",
+            SuccessUrl = "https://hostflow.software/ui/payment-success?session_id={CHECKOUT_SESSION_ID}",
+            CancelUrl = "https://hostflow.software/ui/payment-cancel",
             Expand = new List<string> { "payment_intent" },
             LineItems = new List<Stripe.Checkout.SessionLineItemOptions>
         {

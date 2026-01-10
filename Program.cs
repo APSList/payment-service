@@ -26,6 +26,17 @@ builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer(); // za minimal API in controller explorer
 builder.Services.AddSwaggerGen();
 
+// CORS
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("AllowAngularDev", policy =>
+    {
+        policy
+            .WithOrigins("http://localhost:4200")
+            .AllowAnyHeader()
+            .AllowAnyMethod();
+    });
+});
 //Options
 builder.Services
     .AddOptions<StripeOptions>()
@@ -278,6 +289,7 @@ app.UseHttpsRedirection();
 app.UseAuthentication();
 app.UseAuthorization();
 
+app.UseCors("AllowAngularDev");
 
 app.MapControllers();
 
