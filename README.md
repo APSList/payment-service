@@ -1,6 +1,7 @@
 ﻿# payment-service
 
 > Mikrostoritev za upravljanje plačil in integracijo s Stripe.
+Dostopna je na https://hostflow.software/payment/swagger/index.html
 
 ---
 
