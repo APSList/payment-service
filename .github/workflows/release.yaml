@@ -1,0 +1,87 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+env:
+  IMAGE_REPO: ${{ secrets.DOCKERHUB_USERNAME }}/payment-service
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET 10 (preview)
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+          dotnet-quality: preview
+
+      - name: Restore
+        run: dotnet restore
+
+      - name: Build
+        run: dotnet build --no-restore -c Release
+
+      - name: Test
+        run: dotnet test --no-build -c Release --verbosity normal
+
+  build:
+    runs-on: ubuntu-latest
+    needs: test
+    environment: prod
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Login to DockerHub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build and push Docker image
+        run: |
+          IMAGE_TAG=${GITHUB_REF#refs/tags/}
+          echo "Building image with tag $IMAGE_TAG"
+          docker build -t $IMAGE_REPO:$IMAGE_TAG .
+          docker push $IMAGE_REPO:$IMAGE_TAG
+
+  deploy:
+    runs-on: ubuntu-latest
+    needs: build
+    environment: dev
+
+    steps:
+      - name: Setup kubeconfig
+        run: |
+          mkdir -p $HOME/.kube
+          echo "${{ secrets.KUBE_CONFIG_PROD }}" | base64 --decode > $HOME/.kube/config
+
+      - name: Checkout Helm repo
+        uses: actions/checkout@v4
+        with:
+          repository: APSList/Hostflow
+          path: Hostflow
+          token: ${{ secrets.GH_TOKEN }}
+
+      - name: Deploy to PROD with Helm
+        run: |
+          IMAGE_TAG=${GITHUB_REF#refs/tags/}
+          helm upgrade --install payment-service-prod ./Hostflow/helm/charts/payment-service \
+            --namespace prod \
+            --create-namespace \
+            --set image.repository=$IMAGE_REPO \
+            --set image.tag=$IMAGE_TAG \
+            --set image.pullPolicy=Always
+            --set actualSecrets.DB_URL_PAYMENT="${{ secrets.DB_URL_PAYMENT }}" \
+            --set actualSecrets.STRIPE_KEY="${{ secrets.STRIPE_KEY }}" \
+            --set actualSecrets.STRIPE_WEBHOOK_SECRET="${{ secrets.STRIPE_WEBHOOK_SECRET }}" \
+            --set actualSecrets.KAFKA_SASL_MECHANISM="${{ secrets.KAFKA_SASL_MECHANISM }}" \
+            --set actualSecrets.KAFKA_SECURITY_PROTOCOL="${{ secrets.KAFKA_SECURITY_PROTOCOL }}" \
+            --set actualSecrets.KAFKA_SASL_USERNAME="${{ secrets.KAFKA_SASL_USERNAME }}" \
+            --set actualSecrets.KAFKA_SASL_PASSWORD="${{ secrets.KAFKA_SASL_PASSWORD }}"

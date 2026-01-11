@@ -1,4 +1,5 @@
-﻿using System;
+﻿using payment_service.Enums;
+using System;
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 
@@ -14,9 +15,13 @@ public class Payment
 
     [Column("organization_id")]
     public int? OrganizationId { get; set; }
-
+    [Column("session_id")]
+    public string SessionId { get; set; } = string.Empty;
     [Column("reservation_id")]
     public int? ReservationId { get; set; }
+
+    [Column("customer_id")]
+    public int? CustomerId { get; set; }
 
     [Column("amount")]
     public decimal? Amount { get; set; }

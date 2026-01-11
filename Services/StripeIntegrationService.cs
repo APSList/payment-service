@@ -1,8 +1,10 @@
 ﻿using Microsoft.Extensions.Options;
 using payment_service.Interfaces;
+using payment_service.Models.Payment;
 using payment_service.Models.Stripe;
 using payment_service.Options;
 using Stripe;
+using Stripe.Checkout;
 
 public class StripeIntegrationService : IStripeIntegrationService
 {
@@ -43,4 +45,40 @@ public class StripeIntegrationService : IStripeIntegrationService
     {
         return await _paymentIntentService.CancelAsync(paymentIntentId);
     }
+
+    public async Task<Session> CreateCheckoutSessionAsync(PaymentCreateRequestDTO dto)
+    {
+        var options = new SessionCreateOptions
+        {
+            Mode = "payment",
+            SuccessUrl = "https://hostflow.software/ui/payment-success?session_id={CHECKOUT_SESSION_ID}",
+            CancelUrl = "https://hostflow.software/ui/payment-cancel",
+            Expand = new List<string> { "payment_intent" },
+            LineItems = new List<Stripe.Checkout.SessionLineItemOptions>
+        {
+            new()
+            {
+                Quantity = 1,
+                PriceData = new Stripe.Checkout.SessionLineItemPriceDataOptions
+                {
+                    Currency = "eur",
+                    UnitAmount = (long)(dto.Amount!.Value * 100),
+                    ProductData = new()
+                    {
+                        Name = "Reservation payment"
+                    }
+                }
+            }
+        },
+            Metadata = new Dictionary<string, string>
+            {
+                ["reservationId"] = dto.ReservationId!.Value.ToString(),
+                ["organizationId"] = dto.OrganizationId!.Value.ToString()
+            }
+        };
+
+        var service = new Stripe.Checkout.SessionService();
+        return await service.CreateAsync(options);
+    }
+
 }
