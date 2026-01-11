@@ -54,7 +54,7 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     needs: build
-    environment: prod
+    environment: dev
 
     steps:
       - name: Setup kubeconfig
